@@ -21,6 +21,8 @@ import org.apache.commons.cli.DefaultParser;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ScheduledMessage;
 
+import java.io.File;
+
 public class Main {
 	private static Logger logger = LoggerFactory.getLogger(Main.class.getName());
 
@@ -34,13 +36,17 @@ public class Main {
 		}
 	}
 
-	public static final String OPT_SURL = "sb";
-	public static final String OPT_SUSER = "su";
-	public static final String OPT_SPASS = "sp";
+	private static final String OPT_SURL = "sb";
+	private static final String OPT_SUSER = "su";
+	private static final String OPT_SPASS = "sp";
 
-	public static final String OPT_TURL = "tb";
-	public static final String OPT_TUSER = "tu";
-	public static final String OPT_TPASS = "tp";
+	private static final String OPT_TURL = "tb";
+	private static final String OPT_TUSER = "tu";
+	private static final String OPT_TPASS = "tp";
+
+	private static final String OPT_TDIR = "td";
+	private static final String OPT_TID = "tid";
+
 
 	private Options createOptions() {
 		Options options = new Options();
@@ -52,6 +58,9 @@ public class Main {
         options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
         options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
         options.addOption(OPT_TPASS, "target-pass", true, "Target broker password.");
+
+        options.addOption(OPT_TDIR, "target-dir", true, "Target directory.");
+        options.addOption(OPT_TID, "target-id", true, "Target id property field. Default: "+idProperty);
 
 		return options;
 	}
@@ -74,6 +83,10 @@ public class Main {
 
     private CommandLine commandLine;
 
+	private int targetCount = 0;
+	private String idProperty = "scheduledJobId";
+	private File targetDir = null;
+
 	public void run(String[] args) throws Exception {
 		Options options = createOptions();
 
@@ -88,11 +101,43 @@ public class Main {
 
 		commandLine = commandLineParser.parse(options, args);
 
-		setupSource();
+		setupTargetDir();
+		setupTargetBroker();
+
+		setupSourceBroker();
 		processSource();
 	}
 
-	private void setupSource() throws Exception {
+	private void setupTargetDir() throws Exception {
+		if(!commandLine.hasOption(OPT_TDIR)) {
+			logger.info("Target directory not specified");
+			return;
+		}
+		targetDir = new File(commandLine.getOptionValue(OPT_TDIR));
+		if(!targetDir.isDirectory()) {
+			targetDir.mkdirs();
+		}
+		logger.info("Target dir: "+targetDir);
+		targetCount++;
+	}
+
+	private void setupTargetBroker() throws Exception {
+		if(!commandLine.hasOption(OPT_TURL)) {
+			logger.info("Target broker not specified");
+			return;
+		}
+		try {
+			targetConnectionFactory = new ActiveMQConnectionFactory(commandLine.getOptionValue(OPT_TUSER), commandLine.getOptionValue(OPT_TPASS), commandLine.getOptionValue(OPT_TURL));
+			targetConnection = targetConnectionFactory.createConnection();
+			targetSession = targetConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+		} catch(Exception e) {
+			logger.error("Failed to setup targety broker.", e);
+		}
+		logger.info("Target broker connected.");
+		targetCount++;
+	}
+
+	private void setupSourceBroker() throws Exception {
 		sourceConnectionFactory = new ActiveMQConnectionFactory(commandLine.getOptionValue(OPT_SUSER), commandLine.getOptionValue(OPT_SPASS), commandLine.getOptionValue(OPT_SURL));
 		sourceConnection = sourceConnectionFactory.createConnection();
 
@@ -104,7 +149,7 @@ public class Main {
 
         sourceProducer = sourceSession.createProducer(requestBrowse);
         sourceBrowser = sourceSession.createConsumer(browseDest);
-		logger.debug("Source AMQ setup Ok");
+		logger.info("Source broker connected");
 	}
 
 	private javax.jms.Message createBrowseRequest() throws Exception {
@@ -117,12 +162,28 @@ public class Main {
 
 	private void processSource() throws Exception {
 		javax.jms.Message request = createBrowseRequest();
-		javax.jms.Message scheduledMessage;
+		javax.jms.Message sourceMessage;
 
-		while ((scheduledMessage = sourceBrowser.receive(browseTimeout)) != null) {
-			logger.debug(scheduledMessage.toString());
+		while ((sourceMessage = sourceBrowser.receive(browseTimeout)) != null) {
+			processSourceMessage(sourceMessage);
 		}
+		logger.info("Done");
+		shutdownTargetBroker();
+		shutdownSourceBroker();
+	}
 
+	private void shutdownTargetBroker() throws Exception {
+	}
+
+	private void shutdownSourceBroker() throws Exception {
+		sourceProducer.close();
+		sourceBrowser.close();
+		sourceSession.close();
+		sourceConnection.close();
+	}
+
+	private void processSourceMessage(javax.jms.Message sourceMessage) throws Exception {
+		logger.debug(sourceMessage.toString());
 	}
 }
 
