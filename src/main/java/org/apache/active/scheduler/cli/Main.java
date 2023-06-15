@@ -22,6 +22,7 @@ import org.apache.activemq.ScheduledMessage;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
 import java.util.Enumeration;
@@ -224,56 +225,74 @@ public class Main {
 		}
 
 		File headersFile = new File(messageDir, "headers");
-		FileOutputStream headersFileOutputStream = new FileOutputStream(headersFile);
-		properties.store(headersFileOutputStream, "comment");
-		headersFileOutputStream.close();
-		headersFileOutputStream = null;
+		FileOutputStream fileOutputStream = new FileOutputStream(headersFile);
+		properties.store(fileOutputStream, "Headers");
+		fileOutputStream.close();
+		fileOutputStream = null;
 	}
 
 	private void storeBody(File messageDir, Message message) throws Exception {
-		if(message.isBodyAssignableTo(byte[].class)) {
-			storeBytesBody(messageDir, message);
-		} else if(message.isBodyAssignableTo(String.class)) {
+		if(message.isBodyAssignableTo(String.class)) {
 			storeStringBody(messageDir, message);
 		} else if(message.isBodyAssignableTo(Map.class)) {
 			storeMapBody(messageDir, message);
-		} else if(message.isBodyAssignableTo(Serializable.class)) {
-			storeObjectBody(messageDir, message);
 		} else if(message.isBodyAssignableTo(byte[].class)) {
 			storeBytesBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(Serializable.class)) {
+			storeObjectBody(messageDir, message);
+		} else {
+			logger.warn("Unknown message type: "+message.toString());
 		}
 	}
 
 	private void storeStringBody(File messageDir, Message message) throws Exception {
 		File bodyFile = new File(messageDir, "body.string");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
-		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
-		bodyFileOutputStream.close();
-		bodyFileOutputStream = null;
+		String body = message.getBody(String.class);
+		FileOutputStream fileOutputStream = new FileOutputStream(bodyFile);
+		fileOutputStream.write(body.getBytes());
+		fileOutputStream.close();
+		fileOutputStream = null;
 	}
 
 	private void storeMapBody(File messageDir, Message message) throws Exception {
 		File bodyFile = new File(messageDir, "body.map");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
-		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
-		bodyFileOutputStream.close();
-		bodyFileOutputStream = null;
-	}
+		Map body = message.getBody(Map.class);
+		FileOutputStream fileOutputStream = new FileOutputStream(bodyFile);
 
-	private void storeObjectBody(File messageDir, Message message) throws Exception {
-		File bodyFile = new File(messageDir, "body.object");
-		logger.debug("Body: "+bodyFile.getAbsolutePath());
-		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
-		bodyFileOutputStream.close();
-		bodyFileOutputStream = null;
+		ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream);
+		objectOutputStream.writeObject(body);
+		objectOutputStream.close();
+		objectOutputStream = null;
+
+		fileOutputStream.close();
+		fileOutputStream = null;
 	}
 
 	private void storeBytesBody(File messageDir, Message message) throws Exception {
 		File bodyFile = new File(messageDir, "body.bytes");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
-		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
-		bodyFileOutputStream.close();
-		bodyFileOutputStream = null;
+		byte[] body = message.getBody(byte[].class);
+		FileOutputStream fileOutputStream = new FileOutputStream(bodyFile);
+		fileOutputStream.write(body);
+		fileOutputStream.close();
+		fileOutputStream = null;
+	}
+
+	private void storeObjectBody(File messageDir, Message message) throws Exception {
+		File bodyFile = new File(messageDir, "body.object");
+		logger.debug("Body: "+bodyFile.getAbsolutePath());
+		Object body = message.getBody(Object.class);
+		FileOutputStream fileOutputStream = new FileOutputStream(bodyFile);
+
+		ObjectOutputStream objectOutputStream = new ObjectOutputStream(fileOutputStream);
+		objectOutputStream.writeObject(body);
+		objectOutputStream.close();
+		objectOutputStream = null;
+
+		fileOutputStream.close();
+		fileOutputStream = null;
 	}
 
 	private void forwardToTargetBroker(Message message) throws Exception {
