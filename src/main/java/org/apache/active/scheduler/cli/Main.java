@@ -57,38 +57,37 @@ public class Main {
 	private Options createOptions() {
 		Options options = new Options();
 
-        options.addOption(OPT_SURL, "source-broker", true, "Source broker url.");
-        options.addOption(OPT_SUSER, "source-user", true, "Source broker username.");
-        options.addOption(OPT_SPASS, "source-pass", true, "Source broker password.");
+		options.addOption(OPT_SURL, "source-broker", true, "Source broker url.");
+		options.addOption(OPT_SUSER, "source-user", true, "Source broker username.");
+		options.addOption(OPT_SPASS, "source-pass", true, "Source broker password.");
 
-        options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
-        options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
-        options.addOption(OPT_TPASS, "target-pass", true, "Target broker password.");
+		options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
+		options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
+		options.addOption(OPT_TPASS, "target-pass", true, "Target broker password.");
 
-        options.addOption(OPT_TDIR, "target-dir", true, "Target directory.");
-        options.addOption(OPT_TID, "target-id", true, "Target id property field. Default: "+idProperty);
+		options.addOption(OPT_TDIR, "target-dir", true, "Target directory.");
+		options.addOption(OPT_TID, "target-id", true, "Target id property field. Default: "+idProperty);
 
 		return options;
 	}
 
-    private ConnectionFactory sourceConnectionFactory;
-    private Connection sourceConnection;
-    private Session sourceSession;
+	private ConnectionFactory sourceConnectionFactory;
+	private Connection sourceConnection;
+	private Session sourceSession;
 
-	private Destination requestBrowse = null;
-    private Destination browseDest = null;
+	private Destination browseReplyToDestination = null;
 	private long browseTimeout = 6000;
 
 	private MessageProducer sourceProducer = null;
-	private MessageConsumer sourceBrowser = null;
+	private MessageConsumer sourceConsumer = null;
 
 
-    private ConnectionFactory targetConnectionFactory;
-    private Connection targetConnection;
-    private Session targetSession;
+	private ConnectionFactory targetConnectionFactory;
+	private Connection targetConnection;
+	private Session targetSession;
 	private MessageProducer targetProducer = null;
 
-    private CommandLine commandLine;
+	private CommandLine commandLine;
 
 	private int targetCount = 0;
 	private String idProperty = "scheduledJobId";
@@ -149,32 +148,34 @@ public class Main {
 		sourceConnection = sourceConnectionFactory.createConnection();
 
 		sourceSession = sourceConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-        requestBrowse = sourceSession.createTopic(ScheduledMessage.AMQ_SCHEDULER_MANAGEMENT_DESTINATION);
-        browseDest = sourceSession.createTemporaryQueue();
+		Destination browseRequestDestination = sourceSession.createTopic(ScheduledMessage.AMQ_SCHEDULER_MANAGEMENT_DESTINATION);
+		browseReplyToDestination = sourceSession.createTemporaryQueue();
 
-        sourceConnection.start();
+		sourceConnection.start();
 
-        sourceProducer = sourceSession.createProducer(requestBrowse);
-        sourceBrowser = sourceSession.createConsumer(browseDest);
+		sourceProducer = sourceSession.createProducer(browseRequestDestination);
+		sourceConsumer = sourceSession.createConsumer(browseReplyToDestination);
+
 		logger.info("Source broker connected");
 	}
 
-	private Message createBrowseRequest() throws Exception {
-        Message request = sourceSession.createMessage();
-        request.setStringProperty(ScheduledMessage.AMQ_SCHEDULER_ACTION, ScheduledMessage.AMQ_SCHEDULER_ACTION_BROWSE);
-        request.setJMSReplyTo(browseDest);
-        sourceProducer.send(request);
-        return request;
-    }
+	private void createBrowseRequest() throws Exception {
+		Message request = sourceSession.createMessage();
+		request.setStringProperty(ScheduledMessage.AMQ_SCHEDULER_ACTION, ScheduledMessage.AMQ_SCHEDULER_ACTION_BROWSE);
+		request.setJMSReplyTo(browseReplyToDestination);
+		sourceProducer.send(request);
+	}
 
 	private void processSource() throws Exception {
-		Message request = createBrowseRequest();
-		Message message;
+		createBrowseRequest();
 
-		while ((message = sourceBrowser.receive(browseTimeout)) != null) {
+		Message message;
+		while ((message = sourceConsumer.receive(browseTimeout)) != null) {
 			processSourceMessage(message);
 		}
+
 		logger.info("Done");
+
 		shutdownTargetBroker();
 		shutdownSourceBroker();
 	}
@@ -191,7 +192,7 @@ public class Main {
 
 	private void shutdownSourceBroker() throws Exception {
 		sourceProducer.close();
-		sourceBrowser.close();
+		sourceConsumer.close();
 		sourceSession.close();
 		sourceConnection.close();
 	}
