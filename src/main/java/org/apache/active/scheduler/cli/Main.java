@@ -45,6 +45,7 @@ public class Main {
 	private static final String OPT_SURL = "sb";
 	private static final String OPT_SUSER = "su";
 	private static final String OPT_SPASS = "sp";
+	private static final String OPT_STIMEOUT = "st";
 
 	private static final String OPT_TURL = "tb";
 	private static final String OPT_TUSER = "tu";
@@ -60,6 +61,7 @@ public class Main {
 		options.addOption(OPT_SURL, "source-broker", true, "Source broker url.");
 		options.addOption(OPT_SUSER, "source-user", true, "Source broker username.");
 		options.addOption(OPT_SPASS, "source-pass", true, "Source broker password.");
+		options.addOption(OPT_STIMEOUT, "source-timeout", true, "Source timeout. Default: "+sourceTimeout);
 
 		options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
 		options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
@@ -76,7 +78,7 @@ public class Main {
 	private Session sourceSession;
 
 	private Destination browseReplyToDestination = null;
-	private long browseTimeout = 6000;
+	private long sourceTimeout = 6000;
 
 	private MessageProducer sourceProducer = null;
 	private MessageConsumer sourceConsumer = null;
@@ -119,6 +121,7 @@ public class Main {
 			logger.info("Target directory not specified");
 			return;
 		}
+
 		targetDir = new File(commandLine.getOptionValue(OPT_TDIR));
 		if(!targetDir.isDirectory()) {
 			targetDir.mkdirs();
@@ -132,6 +135,7 @@ public class Main {
 			logger.info("Target broker not specified");
 			return;
 		}
+
 		try {
 			targetConnectionFactory = new ActiveMQConnectionFactory(commandLine.getOptionValue(OPT_TUSER), commandLine.getOptionValue(OPT_TPASS), commandLine.getOptionValue(OPT_TURL));
 			targetConnection = targetConnectionFactory.createConnection();
@@ -144,6 +148,10 @@ public class Main {
 	}
 
 	private void setupSourceBroker() throws Exception {
+		if(commandLine.hasOption(OPT_STIMEOUT)) {
+			sourceTimeout = Long.parseLong(commandLine.getOptionValue(OPT_STIMEOUT));
+		}
+
 		sourceConnectionFactory = new ActiveMQConnectionFactory(commandLine.getOptionValue(OPT_SUSER), commandLine.getOptionValue(OPT_SPASS), commandLine.getOptionValue(OPT_SURL));
 		sourceConnection = sourceConnectionFactory.createConnection();
 
@@ -169,8 +177,9 @@ public class Main {
 	private void processSource() throws Exception {
 		createBrowseRequest();
 
+		logger.debug("Source timeout: "+sourceTimeout);
 		Message message;
-		while ((message = sourceConsumer.receive(browseTimeout)) != null) {
+		while ((message = sourceConsumer.receive(sourceTimeout)) != null) {
 			processSourceMessage(message);
 		}
 
