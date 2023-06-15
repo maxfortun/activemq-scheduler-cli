@@ -28,6 +28,7 @@ import java.io.Serializable;
 import java.util.Enumeration;
 import java.util.Properties;
 import java.util.Map;
+import java.util.HashMap;
 
 public class Main {
 	private static Logger logger = LoggerFactory.getLogger(Main.class.getName());
@@ -87,7 +88,7 @@ public class Main {
 	private ConnectionFactory targetConnectionFactory;
 	private Connection targetConnection;
 	private Session targetSession;
-	private MessageProducer targetProducer = null;
+	private Map<String, MessageProducer> targetProducers = new HashMap<>();
 
 	private CommandLine commandLine;
 
@@ -143,6 +144,7 @@ public class Main {
 		} catch(Exception e) {
 			logger.error("Failed to setup targety broker.", e);
 		}
+
 		logger.info("Target broker connected.");
 		targetCount++;
 	}
@@ -194,7 +196,10 @@ public class Main {
 			return;
 		}
 
-		targetProducer.close();
+		for(MessageProducer targetProducer : targetProducers.values()) {
+			targetProducer.close();
+		}
+
 		targetSession.close();
 		targetConnection.close();
 	}
@@ -242,6 +247,7 @@ public class Main {
 	}
 
 	private void storeBody(File messageDir, Message message) throws Exception {
+		logger.debug("JMSType: "+message.getJMSType());
 		if(message.isBodyAssignableTo(String.class)) {
 			storeStringBody(messageDir, message);
 		} else if(message.isBodyAssignableTo(Map.class)) {
@@ -305,7 +311,47 @@ public class Main {
 		fileOutputStream = null;
 	}
 
+	private MessageProducer getTargetProducer(Message message) throws Exception {
+		Destination destination = null;
+
+		logger.debug("JMSDestination: "+message.getJMSDestination());
+		String destinationName = message.getStringProperty("topic");
+		logger.debug("topic: "+destinationName);
+		if(null != destinationName) {
+			destination = targetSession.createTopic(destinationName);
+		} else {
+			destinationName = message.getStringProperty("queue");
+			logger.debug("queue: "+destinationName);
+
+			if(null != destinationName) {
+				destination = targetSession.createQueue(destinationName);
+			}
+		}
+
+		if(null == destination) {
+			logger.warn("Could not find destination "+message);
+			return null;
+		}
+
+		MessageProducer targetProducer = targetProducers.get(destination.toString());
+		if(null == targetProducer) {
+			targetProducer = targetSession.createProducer(destination);
+			targetProducers.put(destination.toString(), targetProducer);
+			logger.debug("Target destination: "+destination);
+		}
+		return targetProducer;
+	}
+
 	private void forwardToTargetBroker(Message message) throws Exception {
+		if(null == targetConnection) {
+			return;
+		}
+
+		MessageProducer targetProducer = getTargetProducer(message);
+		if(null == targetProducer) {
+			return;
+		}
+		// targetProducer.send(message);
 	}
 }
 
