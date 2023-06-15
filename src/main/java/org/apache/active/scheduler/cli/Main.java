@@ -3,7 +3,6 @@ package org.apache.activemq.scheduler.cli;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-
 import javax.jms.ConnectionFactory;
 import javax.jms.Connection;
 import javax.jms.Session;
@@ -22,6 +21,12 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ScheduledMessage;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.Serializable;
+
+import java.util.Enumeration;
+import java.util.Properties;
+import java.util.Map;
 
 public class Main {
 	private static Logger logger = LoggerFactory.getLogger(Main.class.getName());
@@ -80,6 +85,7 @@ public class Main {
     private ConnectionFactory targetConnectionFactory;
     private Connection targetConnection;
     private Session targetSession;
+	private MessageProducer targetProducer = null;
 
     private CommandLine commandLine;
 
@@ -117,7 +123,7 @@ public class Main {
 		if(!targetDir.isDirectory()) {
 			targetDir.mkdirs();
 		}
-		logger.info("Target dir: "+targetDir);
+		logger.info("Target dir: "+targetDir.getAbsolutePath());
 		targetCount++;
 	}
 
@@ -152,8 +158,8 @@ public class Main {
 		logger.info("Source broker connected");
 	}
 
-	private javax.jms.Message createBrowseRequest() throws Exception {
-        javax.jms.Message request = sourceSession.createMessage();
+	private Message createBrowseRequest() throws Exception {
+        Message request = sourceSession.createMessage();
         request.setStringProperty(ScheduledMessage.AMQ_SCHEDULER_ACTION, ScheduledMessage.AMQ_SCHEDULER_ACTION_BROWSE);
         request.setJMSReplyTo(browseDest);
         sourceProducer.send(request);
@@ -161,11 +167,11 @@ public class Main {
     }
 
 	private void processSource() throws Exception {
-		javax.jms.Message request = createBrowseRequest();
-		javax.jms.Message sourceMessage;
+		Message request = createBrowseRequest();
+		Message message;
 
-		while ((sourceMessage = sourceBrowser.receive(browseTimeout)) != null) {
-			processSourceMessage(sourceMessage);
+		while ((message = sourceBrowser.receive(browseTimeout)) != null) {
+			processSourceMessage(message);
 		}
 		logger.info("Done");
 		shutdownTargetBroker();
@@ -173,6 +179,13 @@ public class Main {
 	}
 
 	private void shutdownTargetBroker() throws Exception {
+		if(null == targetConnection) {
+			return;
+		}
+
+		targetProducer.close();
+		targetSession.close();
+		targetConnection.close();
 	}
 
 	private void shutdownSourceBroker() throws Exception {
@@ -182,8 +195,88 @@ public class Main {
 		sourceConnection.close();
 	}
 
-	private void processSourceMessage(javax.jms.Message sourceMessage) throws Exception {
-		logger.debug(sourceMessage.toString());
+	private void processSourceMessage(Message message) throws Exception {
+		logger.debug(message.toString());
+		forwardToDir(message);
+		forwardToTargetBroker(message);
+	}
+
+	private void forwardToDir(Message message) throws Exception {
+		if(null == targetDir) {
+			return;
+		}
+
+		String id = message.getStringProperty(idProperty);
+		File messageDir = new File(targetDir, id);
+		logger.debug(messageDir.toString());
+		messageDir.mkdir();
+
+		storeHeaders(messageDir, message);
+		storeBody(messageDir, message);
+	}
+
+	private void storeHeaders(File messageDir, Message message) throws Exception {
+		Properties properties = new Properties();
+		for (Enumeration<String> e = message.getPropertyNames(); e.hasMoreElements();) {
+			String name = e.nextElement();
+			String value = message.getStringProperty(name);
+			properties.setProperty(name, value);
+		}
+
+		File headersFile = new File(messageDir, "headers");
+		FileOutputStream headersFileOutputStream = new FileOutputStream(headersFile);
+		properties.store(headersFileOutputStream, "comment");
+		headersFileOutputStream.close();
+		headersFileOutputStream = null;
+	}
+
+	private void storeBody(File messageDir, Message message) throws Exception {
+		if(message.isBodyAssignableTo(byte[].class)) {
+			storeBytesBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(String.class)) {
+			storeStringBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(Map.class)) {
+			storeMapBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(Serializable.class)) {
+			storeObjectBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(byte[].class)) {
+			storeBytesBody(messageDir, message);
+		}
+	}
+
+	private void storeStringBody(File messageDir, Message message) throws Exception {
+		File bodyFile = new File(messageDir, "body.string");
+		logger.debug("Body: "+bodyFile.getAbsolutePath());
+		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
+		bodyFileOutputStream.close();
+		bodyFileOutputStream = null;
+	}
+
+	private void storeMapBody(File messageDir, Message message) throws Exception {
+		File bodyFile = new File(messageDir, "body.map");
+		logger.debug("Body: "+bodyFile.getAbsolutePath());
+		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
+		bodyFileOutputStream.close();
+		bodyFileOutputStream = null;
+	}
+
+	private void storeObjectBody(File messageDir, Message message) throws Exception {
+		File bodyFile = new File(messageDir, "body.object");
+		logger.debug("Body: "+bodyFile.getAbsolutePath());
+		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
+		bodyFileOutputStream.close();
+		bodyFileOutputStream = null;
+	}
+
+	private void storeBytesBody(File messageDir, Message message) throws Exception {
+		File bodyFile = new File(messageDir, "body.bytes");
+		logger.debug("Body: "+bodyFile.getAbsolutePath());
+		FileOutputStream bodyFileOutputStream = new FileOutputStream(bodyFile);
+		bodyFileOutputStream.close();
+		bodyFileOutputStream = null;
+	}
+
+	private void forwardToTargetBroker(Message message) throws Exception {
 	}
 }
 
