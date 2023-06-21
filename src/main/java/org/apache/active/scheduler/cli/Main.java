@@ -19,6 +19,7 @@ import org.apache.commons.cli.DefaultParser;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ScheduledMessage;
+import org.apache.activemq.command.ActiveMQMessage;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -180,8 +181,8 @@ public class Main {
 		createBrowseRequest();
 
 		logger.debug("Source timeout: "+sourceTimeout);
-		Message message;
-		while ((message = sourceConsumer.receive(sourceTimeout)) != null) {
+		ActiveMQMessage message;
+		while ((message = (ActiveMQMessage)sourceConsumer.receive(sourceTimeout)) != null) {
 			processSourceMessage(message);
 		}
 
@@ -211,13 +212,13 @@ public class Main {
 		sourceConnection.close();
 	}
 
-	private void processSourceMessage(Message message) throws Exception {
+	private void processSourceMessage(ActiveMQMessage message) throws Exception {
 		logger.debug(message.toString());
 		forwardToDir(message);
 		forwardToTargetBroker(message);
 	}
 
-	private void forwardToDir(Message message) throws Exception {
+	private void forwardToDir(ActiveMQMessage message) throws Exception {
 		if(null == targetDir) {
 			return;
 		}
@@ -231,7 +232,7 @@ public class Main {
 		storeBody(messageDir, message);
 	}
 
-	private void storeHeaders(File messageDir, Message message) throws Exception {
+	private void storeHeaders(File messageDir, ActiveMQMessage message) throws Exception {
 		Properties properties = new Properties();
 		for (Enumeration<String> e = message.getPropertyNames(); e.hasMoreElements();) {
 			String name = e.nextElement();
@@ -246,7 +247,7 @@ public class Main {
 		fileOutputStream = null;
 	}
 
-	private void storeBody(File messageDir, Message message) throws Exception {
+	private void storeBody(File messageDir, ActiveMQMessage message) throws Exception {
 		logger.debug("JMSType: "+message.getJMSType());
 		if(message.isBodyAssignableTo(String.class)) {
 			storeStringBody(messageDir, message);
@@ -261,7 +262,7 @@ public class Main {
 		}
 	}
 
-	private void storeStringBody(File messageDir, Message message) throws Exception {
+	private void storeStringBody(File messageDir, ActiveMQMessage message) throws Exception {
 		File bodyFile = new File(messageDir, "body.string");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
 		String body = message.getBody(String.class);
@@ -271,7 +272,7 @@ public class Main {
 		fileOutputStream = null;
 	}
 
-	private void storeMapBody(File messageDir, Message message) throws Exception {
+	private void storeMapBody(File messageDir, ActiveMQMessage message) throws Exception {
 		File bodyFile = new File(messageDir, "body.map");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
 		Map body = message.getBody(Map.class);
@@ -286,7 +287,7 @@ public class Main {
 		fileOutputStream = null;
 	}
 
-	private void storeBytesBody(File messageDir, Message message) throws Exception {
+	private void storeBytesBody(File messageDir, ActiveMQMessage message) throws Exception {
 		File bodyFile = new File(messageDir, "body.bytes");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
 		byte[] body = message.getBody(byte[].class);
@@ -296,7 +297,7 @@ public class Main {
 		fileOutputStream = null;
 	}
 
-	private void storeObjectBody(File messageDir, Message message) throws Exception {
+	private void storeObjectBody(File messageDir, ActiveMQMessage message) throws Exception {
 		File bodyFile = new File(messageDir, "body.object");
 		logger.debug("Body: "+bodyFile.getAbsolutePath());
 		Object body = message.getBody(Object.class);
@@ -311,10 +312,11 @@ public class Main {
 		fileOutputStream = null;
 	}
 
-	private MessageProducer getTargetProducer(Message message) throws Exception {
-		Destination destination = null;
-
-		logger.debug("JMSDestination: "+message.getJMSDestination());
+	private MessageProducer getTargetProducer(ActiveMQMessage message) throws Exception {
+		Destination destination = message.getOriginalDestination();
+		
+/*
+		logger.debug("OriginalDestination: "+message.getOriginalDestination());
 		String destinationName = message.getStringProperty("topic");
 		logger.debug("topic: "+destinationName);
 		if(null != destinationName) {
@@ -327,6 +329,7 @@ public class Main {
 				destination = targetSession.createQueue(destinationName);
 			}
 		}
+*/
 
 		if(null == destination) {
 			logger.warn("Could not find destination "+message);
@@ -342,7 +345,7 @@ public class Main {
 		return targetProducer;
 	}
 
-	private void forwardToTargetBroker(Message message) throws Exception {
+	private void forwardToTargetBroker(ActiveMQMessage message) throws Exception {
 		if(null == targetConnection) {
 			return;
 		}
