@@ -1,4 +1,4 @@
-package org.apache.activemq.scheduler.cli;
+package org.apache.activemq.scheduler.cp;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
