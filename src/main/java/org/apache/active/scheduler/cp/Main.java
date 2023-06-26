@@ -354,7 +354,12 @@ public class Main {
 		if(null == targetProducer) {
 			return;
 		}
-		// targetProducer.send(message);
+
+		message.setDestination(message.getOriginalDestination());
+		message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
+
+		logger.debug("forwardToTargetBroker: {}", message); 
+		targetProducer.send(message);
 	}
 }
 
