@@ -26,6 +26,7 @@ import java.io.FileOutputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.Properties;
 import java.util.Map;
@@ -357,6 +358,17 @@ public class Main {
 
 		message.setDestination(message.getOriginalDestination());
 		message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
+
+		String delayString = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
+		if(null != delayString) {
+			long delay = Long.parseLong(delayString);
+			long brokerInTime = message.getBrokerInTime();
+			long now = new Date().getTime();
+			long delayShift = now - brokerInTime;
+			long shiftedDelay = delay - delayShift;
+			message.setProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, ""+shiftedDelay);
+			logger.debug("Shifting delay from "+brokerInTime+"+"+delay+"="+new Date(brokerInTime+delay)+" to "+now+"+"+shiftedDelay+"="+new Date(now+shiftedDelay));
+		}
 
 		logger.debug("forwardToTargetBroker: {}", message); 
 		targetProducer.send(message);
