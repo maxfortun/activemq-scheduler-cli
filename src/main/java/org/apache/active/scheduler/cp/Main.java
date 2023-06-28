@@ -49,6 +49,7 @@ public class Main {
 	private static final String OPT_SUSER = "su";
 	private static final String OPT_SPASS = "sp";
 	private static final String OPT_STIMEOUT = "st";
+	private static final String OPT_SRM = "srm";
 
 	private static final String OPT_TURL = "tb";
 	private static final String OPT_TUSER = "tu";
@@ -65,6 +66,7 @@ public class Main {
 		options.addOption(OPT_SUSER, "source-user", true, "Source broker username.");
 		options.addOption(OPT_SPASS, "source-pass", true, "Source broker password.");
 		options.addOption(OPT_STIMEOUT, "source-timeout", true, "Source timeout. Default: "+sourceTimeout);
+		options.addOption(OPT_SRM, "source-rm", true, "Remove from source. Values: never, always, success. Default: "+sourceRM);
 
 		options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
 		options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
@@ -82,6 +84,7 @@ public class Main {
 
 	private Destination browseReplyToDestination = null;
 	private long sourceTimeout = 6000;
+	private String sourceRM = "never";
 
 	private MessageProducer sourceProducer = null;
 	private MessageConsumer sourceConsumer = null;
@@ -217,6 +220,7 @@ public class Main {
 		logger.debug(message.toString());
 		forwardToDir(message);
 		forwardToTargetBroker(message);
+		removeFromSource(message);
 	}
 
 	private void forwardToDir(ActiveMQMessage message) throws Exception {
@@ -346,16 +350,17 @@ public class Main {
 		return targetProducer;
 	}
 
-	private void forwardToTargetBroker(ActiveMQMessage message) throws Exception {
+	private void forwardToTargetBroker(ActiveMQMessage sourceMessage) throws Exception {
 		if(null == targetConnection) {
 			return;
 		}
 
-		MessageProducer targetProducer = getTargetProducer(message);
+		MessageProducer targetProducer = getTargetProducer(sourceMessage);
 		if(null == targetProducer) {
 			return;
 		}
 
+		ActiveMQMessage message = (ActiveMQMessage)sourceMessage.copy();
 		message.setDestination(message.getOriginalDestination());
 		message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
 
@@ -372,6 +377,9 @@ public class Main {
 
 		logger.debug("forwardToTargetBroker: {}", message); 
 		targetProducer.send(message);
+	}
+
+	private void removeFromSource(ActiveMQMessage message) throws Exception {
 	}
 }
 
