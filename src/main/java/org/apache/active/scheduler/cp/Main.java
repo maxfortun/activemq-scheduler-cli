@@ -66,7 +66,7 @@ public class Main {
 		options.addOption(OPT_SUSER, "source-user", true, "Source broker username.");
 		options.addOption(OPT_SPASS, "source-pass", true, "Source broker password.");
 		options.addOption(OPT_STIMEOUT, "source-timeout", true, "Source timeout. Default: "+sourceTimeout);
-		options.addOption(OPT_SRM, "source-rm", true, "Remove from source. Values: never, always, success. Default: "+sourceRM);
+		options.addOption(OPT_SRM, "source-rm", true, "Remove from source. Values: never, always, success, error. Default: "+sourceRM);
 
 		options.addOption(OPT_TURL, "target-broker", true, "Target broker url.");
 		options.addOption(OPT_TUSER, "target-user", true, "Target broker username.");
@@ -158,6 +158,12 @@ public class Main {
 		if(commandLine.hasOption(OPT_STIMEOUT)) {
 			sourceTimeout = Long.parseLong(commandLine.getOptionValue(OPT_STIMEOUT));
 		}
+		logger.debug("Source timeout: "+sourceTimeout);
+
+		if(commandLine.hasOption(OPT_SRM)) {
+			sourceRM = commandLine.getOptionValue(OPT_SRM).toLowerCase();
+		}
+		logger.debug("Remove from source: {}", sourceRM);
 
 		sourceConnectionFactory = new ActiveMQConnectionFactory(commandLine.getOptionValue(OPT_SUSER), commandLine.getOptionValue(OPT_SPASS), commandLine.getOptionValue(OPT_SURL));
 		sourceConnection = sourceConnectionFactory.createConnection();
@@ -184,7 +190,6 @@ public class Main {
 	private void processSource() throws Exception {
 		createBrowseRequest();
 
-		logger.debug("Source timeout: "+sourceTimeout);
 		ActiveMQMessage message;
 		while ((message = (ActiveMQMessage)sourceConsumer.receive(sourceTimeout)) != null) {
 			processSourceMessage(message);
@@ -218,12 +223,22 @@ public class Main {
 
 	private void processSourceMessage(ActiveMQMessage message) throws Exception {
 		logger.debug(message.toString());
-		forwardToDir(message);
-		forwardToTargetBroker(message);
-		removeFromSource(message);
+		int errors = forwardToDir(message);
+		errors += forwardToTargetBroker(message);
+		removeFromSource(message, errors);
 	}
 
-	private void forwardToDir(ActiveMQMessage message) throws Exception {
+	private int forwardToDir(ActiveMQMessage message) throws Exception {
+		try {
+			forwardToDirImpl(message);
+			return 0;
+		} catch(Exception e) {
+			logger.warn("forwardToDir: {} ", message, e);
+			return 1;
+		}
+	}
+
+	private void forwardToDirImpl(ActiveMQMessage message) throws Exception {
 		if(null == targetDir) {
 			return;
 		}
@@ -350,7 +365,17 @@ public class Main {
 		return targetProducer;
 	}
 
-	private void forwardToTargetBroker(ActiveMQMessage sourceMessage) throws Exception {
+	private int forwardToTargetBroker(ActiveMQMessage message) throws Exception {
+		try {
+			forwardToTargetBrokerImpl(message);
+			return 0;
+		} catch(Exception e) {
+			logger.warn("forwardToTargetBroker: {} ", message, e);
+			return 1;
+		}
+	}
+
+	private void forwardToTargetBrokerImpl(ActiveMQMessage sourceMessage) throws Exception {
 		if(null == targetConnection) {
 			return;
 		}
@@ -377,6 +402,23 @@ public class Main {
 
 		logger.debug("forwardToTargetBroker: {}", message); 
 		targetProducer.send(message);
+	}
+
+	private void removeFromSource(ActiveMQMessage message, int errors) throws Exception {
+		if("always".equals(sourceRM)) {
+			removeFromSource(message);
+			return;
+		}
+
+		if("success".equals(sourceRM) && errors == 0) {
+			removeFromSource(message);
+			return;
+		}
+
+		if("error".equals(sourceRM) && errors > 0) {
+			removeFromSource(message);
+			return;
+		}
 	}
 
 	private void removeFromSource(ActiveMQMessage message) throws Exception {
