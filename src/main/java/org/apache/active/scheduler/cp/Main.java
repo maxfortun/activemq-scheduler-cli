@@ -58,6 +58,8 @@ public class Main {
 	private static final String OPT_TDIR = "td";
 	private static final String OPT_TID = "tid";
 
+	private static final String OPT_DR = "dr";
+
 
 	private Options createOptions() {
 		Options options = new Options();
@@ -74,6 +76,8 @@ public class Main {
 
 		options.addOption(OPT_TDIR, "target-dir", true, "Target directory.");
 		options.addOption(OPT_TID, "target-id", true, "Target id property field. Default: "+idProperty);
+
+		options.addOption(OPT_DR, "dry-run", false, "Do not alter broker states by either forwarding to target or removing from source.");
 
 		return options;
 	}
@@ -101,6 +105,8 @@ public class Main {
 	private String idProperty = "scheduledJobId";
 	private File targetDir = null;
 
+	private boolean dryRun = false;
+
 	public void run(String[] args) throws Exception {
 		Options options = createOptions();
 
@@ -115,11 +121,21 @@ public class Main {
 
 		commandLine = commandLineParser.parse(options, args);
 
+		setupOptions();
+
 		setupTargetDir();
 		setupTargetBroker();
 
 		setupSourceBroker();
+
 		processSource();
+	}
+
+	private void setupOptions() throws Exception {
+		if(commandLine.hasOption(OPT_DR)) {
+			dryRun = true;
+		}
+		logger.debug("Dry run: {}", dryRun);
 	}
 
 	private void setupTargetDir() throws Exception {
@@ -400,6 +416,10 @@ public class Main {
 			logger.debug("Shifting delay from "+brokerInTime+"+"+delay+"="+new Date(brokerInTime+delay)+" to "+now+"+"+shiftedDelay+"="+new Date(now+shiftedDelay));
 		}
 
+		if(dryRun) {
+			logger.debug("forwardToTargetBroker(DRY RUN): {}", message); 
+			return;
+		}
 		logger.debug("forwardToTargetBroker: {}", message); 
 		targetProducer.send(message);
 	}
@@ -422,6 +442,15 @@ public class Main {
 	}
 
 	private void removeFromSource(ActiveMQMessage message) throws Exception {
+		Message request = sourceSession.createMessage();
+		request.setStringProperty(ScheduledMessage.AMQ_SCHEDULER_ACTION, ScheduledMessage.AMQ_SCHEDULER_ACTION_REMOVE);
+		request.setStringProperty(ScheduledMessage.AMQ_SCHEDULED_ID, message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_ID));
+		if(dryRun) {
+			logger.debug("removeFromSource(DRY RUN): {}", request); 
+			return;
+		}
+		logger.debug("removeFromSource: {}", request); 
+		sourceProducer.send(request);
 	}
 }
 
