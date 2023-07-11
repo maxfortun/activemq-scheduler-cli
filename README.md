@@ -1,5 +1,5 @@
 ### Premise
-Be that troubleshooting or migration, sometimes it may be neccessary to look behind the curtains of the [ActiveMQ Scheduler](https://activemq.apache.org/delay-and-schedule-message-delivery). This little utility allows to copy scheduled messages to a file system or to another broker. And, if you must, even clean up after itself.  
+Be that troubleshooting or migration, sometimes it may be neccessary to look behind the curtains of the [ActiveMQ Scheduler](https://activemq.apache.org/delay-and-schedule-message-delivery). This little utility allows to copy scheduled messages to a file system or to another broker. And, if you must, even cleans up after itself.  
 
 ### Building
 ```bash
