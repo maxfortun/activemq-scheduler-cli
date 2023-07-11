@@ -36,3 +36,15 @@ usage: /usr/lib/jvm/java-11-openjdk-11.0.14.1.1-1.el7_9.x86_64/bin/java
  -tu,--target-user <arg>      Target broker username.
 
 ```
+
+### SSL
+For [SSL](https://docs.oracle.com/javase/8/docs/technotes/guides/security/jsse/JSSERefGuide.html#CustomizingStores) 
+```
+-Djavax.net.ssl.keyStore=/path/to/keyStore.ks -Djavax.net.ssl.keyStorePassword=changeit -Djavax.net.ssl.trustStore=/path/to/trustStore.ts -Djavax.net.ssl.trustStorePassword=changeit )
+```
+
+### Debugging
+For TLDR;
+```
+-Dorg.slf4j.simpleLogger.defaultLogLevel=debug
+```
