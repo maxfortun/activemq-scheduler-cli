@@ -351,22 +351,6 @@ public class Main {
 	private MessageProducer getTargetProducer(ActiveMQMessage message) throws Exception {
 		Destination destination = message.getOriginalDestination();
 		
-/*
-		logger.debug("OriginalDestination: "+message.getOriginalDestination());
-		String destinationName = message.getStringProperty("topic");
-		logger.debug("topic: "+destinationName);
-		if(null != destinationName) {
-			destination = targetSession.createTopic(destinationName);
-		} else {
-			destinationName = message.getStringProperty("queue");
-			logger.debug("queue: "+destinationName);
-
-			if(null != destinationName) {
-				destination = targetSession.createQueue(destinationName);
-			}
-		}
-*/
-
 		if(null == destination) {
 			logger.warn("Could not find destination "+message);
 			return null;
@@ -408,12 +392,12 @@ public class Main {
 		String delayString = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
 		if(null != delayString) {
 			long delay = Long.parseLong(delayString);
-			long brokerInTime = message.getBrokerInTime();
+			long timestamp = message.getTimestamp();
 			long now = new Date().getTime();
-			long delayShift = now - brokerInTime;
+			long delayShift = now - timestamp;
 			long shiftedDelay = delay - delayShift;
 			message.setProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, ""+shiftedDelay);
-			logger.debug("Shifting delay from "+brokerInTime+"+"+delay+"="+new Date(brokerInTime+delay)+" to "+now+"+"+shiftedDelay+"="+new Date(now+shiftedDelay));
+			logger.debug("Shifting delay from "+timestamp+"+"+delay+"="+new Date(timestamp+delay)+" to "+now+"+"+shiftedDelay+"="+new Date(now+shiftedDelay));
 		}
 
 		if(dryRun) {
