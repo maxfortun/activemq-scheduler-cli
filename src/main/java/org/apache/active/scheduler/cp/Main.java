@@ -29,6 +29,8 @@ import java.io.Serializable;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Properties;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -60,6 +62,8 @@ public class Main {
 
 	private static final String OPT_DR = "dr";
 
+	private static final String OPT_PF = "pf";
+
 
 	private Options createOptions() {
 		Options options = new Options();
@@ -78,6 +82,7 @@ public class Main {
 		options.addOption(OPT_TID, "target-id", true, "Target id property field. Default: "+idProperty);
 
 		options.addOption(OPT_DR, "dry-run", false, "Do not alter broker states by either forwarding to target or removing from source.");
+		options.addOption(OPT_PF, "property-filter", true, "Property filter. e.g. property=regex");
 
 		return options;
 	}
@@ -106,6 +111,7 @@ public class Main {
 	private File targetDir = null;
 
 	private boolean dryRun = false;
+	private Map<String, List<String>> propertyFilters = new HashMap<>();
 
 	public void run(String[] args) throws Exception {
 		Options options = createOptions();
@@ -123,7 +129,10 @@ public class Main {
 
 		setupOptions();
 
+		setupPropertyFilters();
+
 		setupTargetDir();
+
 		setupTargetBroker();
 
 		setupSourceBroker();
@@ -136,6 +145,30 @@ public class Main {
 			dryRun = true;
 		}
 		logger.debug("Dry run: {}", dryRun);
+	}
+
+	private void setupPropertyFilters() throws Exception {
+		if(!commandLine.hasOption(OPT_PF)) {
+			logger.info("Property filters not specified");
+			return;
+		}
+
+		String[] filters = commandLine.getOptionValues(OPT_PF);
+
+		for(String filter : filters) {
+			int indexOfSep = filter.indexOf("=");
+			String propertyName = filter.substring(0, indexOfSep);
+			String propertyRE = filter.substring(indexOfSep+1);
+			logger.debug("Property filter: "+propertyName+" = "+propertyRE);
+
+			List<String> patterns = propertyFilters.get(propertyName);
+			if(patterns == null) {
+				patterns = new ArrayList<String>();
+				propertyFilters.put(propertyName, patterns);
+			}
+
+			patterns.add(propertyRE);
+		}
 	}
 
 	private void setupTargetDir() throws Exception {
@@ -238,7 +271,12 @@ public class Main {
 	}
 
 	private void processSourceMessage(ActiveMQMessage message) throws Exception {
-		logger.debug(message.toString());
+		if(!passFilters(message)) {
+			logger.debug("Filtered out: "+message.toString());
+			return;
+		}
+
+		logger.debug("Processing: "+message.toString());
 		int errors = forwardToDir(message);
 		errors += forwardToTargetBroker(message);
 		removeFromSource(message, errors);
@@ -264,11 +302,11 @@ public class Main {
 		logger.debug(messageDir.toString());
 		messageDir.mkdir();
 
-		storeHeaders(messageDir, message);
+		storeProperties(messageDir, message);
 		storeBody(messageDir, message);
 	}
 
-	private void storeHeaders(File messageDir, ActiveMQMessage message) throws Exception {
+	private void storeProperties(File messageDir, ActiveMQMessage message) throws Exception {
 		Properties properties = new Properties();
 		for (Enumeration<String> e = message.getPropertyNames(); e.hasMoreElements();) {
 			String name = e.nextElement();
@@ -276,9 +314,9 @@ public class Main {
 			properties.setProperty(name, value);
 		}
 
-		File headersFile = new File(messageDir, "headers");
-		FileOutputStream fileOutputStream = new FileOutputStream(headersFile);
-		properties.store(fileOutputStream, "Headers");
+		File propertiesFile = new File(messageDir, "properties");
+		FileOutputStream fileOutputStream = new FileOutputStream(propertiesFile);
+		properties.store(fileOutputStream, "Properties");
 		fileOutputStream.close();
 		fileOutputStream = null;
 	}
@@ -404,6 +442,7 @@ public class Main {
 			logger.debug("forwardToTargetBroker(DRY RUN): {}", message); 
 			return;
 		}
+
 		logger.debug("forwardToTargetBroker: {}", message); 
 		targetProducer.send(message);
 	}
@@ -435,6 +474,33 @@ public class Main {
 		}
 		logger.debug("removeFromSource: {}", request); 
 		sourceProducer.send(request);
+	}
+
+	private boolean passFilters(ActiveMQMessage message) throws Exception {
+		if(!passPropertyFilters(message)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	private boolean passPropertyFilters(ActiveMQMessage message) throws Exception {
+		if(propertyFilters.size() == 0) {
+			return true;
+		}
+
+		for(String propertyName : propertyFilters.keySet()) {
+			String propertyValue = message.getStringProperty(propertyName);
+			List<String> patterns = propertyFilters.get(propertyName);
+			for(String pattern : patterns) {
+				if(!propertyValue.matches(pattern)) {
+					logger.debug(propertyName+" = " + propertyValue+ " !~ " + pattern);
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 }
 
