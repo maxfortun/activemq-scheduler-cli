@@ -277,8 +277,10 @@ public class Main {
 		}
 
 		logger.debug("Processing: "+message.toString());
+
 		ActiveMQMessage fixedMessage = fixMessage(message);
 		logger.debug("Fixed: "+fixedMessage.toString());
+
 		int errors = forwardToDir(fixedMessage);
 		errors += forwardToTargetBroker(fixedMessage);
 		removeFromSource(message, errors);
