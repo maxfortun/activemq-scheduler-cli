@@ -107,7 +107,7 @@ public class Main {
 	private CommandLine commandLine;
 
 	private int targetCount = 0;
-	private String idProperty = "scheduledJobId";
+	private String idProperty = "originalScheduledJobId";
 	private File targetDir = null;
 
 	private boolean dryRun = false;
@@ -277,8 +277,10 @@ public class Main {
 		}
 
 		logger.debug("Processing: "+message.toString());
-		int errors = forwardToDir(message);
-		errors += forwardToTargetBroker(message);
+		ActiveMQMessage fixedMessage = fixMessage(message);
+		logger.debug("Fixed: "+fixedMessage.toString());
+		int errors = forwardToDir(fixedMessage);
+		errors += forwardToTargetBroker(fixedMessage);
 		removeFromSource(message, errors);
 	}
 
@@ -413,18 +415,11 @@ public class Main {
 		}
 	}
 
-	private void forwardToTargetBrokerImpl(ActiveMQMessage sourceMessage) throws Exception {
-		if(null == targetConnection) {
-			return;
-		}
-
-		MessageProducer targetProducer = getTargetProducer(sourceMessage);
-		if(null == targetProducer) {
-			return;
-		}
-
+	private ActiveMQMessage fixMessage(ActiveMQMessage sourceMessage) throws Exception {
 		ActiveMQMessage message = (ActiveMQMessage)sourceMessage.copy();
 		message.setDestination(message.getOriginalDestination());
+		String originalScheduledJobId = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
+		message.setProperty("originalScheduledJobId", originalScheduledJobId);
 		message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
 
 		String delayString = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
@@ -436,6 +431,19 @@ public class Main {
 			long shiftedDelay = delay - delayShift;
 			message.setProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY, ""+shiftedDelay);
 			logger.debug("Shifting delay from "+timestamp+"+"+delay+"="+new Date(timestamp+delay)+" to "+now+"+"+shiftedDelay+"="+new Date(now+shiftedDelay));
+		}
+
+		return message;
+	}
+
+	private void forwardToTargetBrokerImpl(ActiveMQMessage message) throws Exception {
+		if(null == targetConnection) {
+			return;
+		}
+
+		MessageProducer targetProducer = getTargetProducer(message);
+		if(null == targetProducer) {
+			return;
 		}
 
 		if(dryRun) {
