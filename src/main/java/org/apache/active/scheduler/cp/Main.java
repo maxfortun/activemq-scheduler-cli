@@ -17,9 +17,14 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 
+import org.apache.activemq.ActiveMQSession;
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.activemq.ScheduledMessage;
 import org.apache.activemq.command.ActiveMQMessage;
+import org.apache.activemq.command.ActiveMQBytesMessage;
+import org.apache.activemq.command.ActiveMQTextMessage;
+import org.apache.activemq.command.ActiveMQMapMessage;
+import org.apache.activemq.command.ActiveMQObjectMessage;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -335,13 +340,12 @@ public class Main {
 	}
 
 	private void storeBody(File messageDir, ActiveMQMessage message) throws Exception {
-		logger.debug("JMSType: "+message.getJMSType());
-		if(message.isBodyAssignableTo(String.class)) {
+		if(message.isBodyAssignableTo(byte[].class)) {
+			storeBytesBody(messageDir, message);
+		} else if(message.isBodyAssignableTo(String.class)) {
 			storeStringBody(messageDir, message);
 		} else if(message.isBodyAssignableTo(Map.class)) {
 			storeMapBody(messageDir, message);
-		} else if(message.isBodyAssignableTo(byte[].class)) {
-			storeBytesBody(messageDir, message);
 		} else if(message.isBodyAssignableTo(Serializable.class)) {
 			storeObjectBody(messageDir, message);
 		} else {
@@ -400,10 +404,10 @@ public class Main {
 	}
 
 	private MessageProducer getTargetProducer(ActiveMQMessage message) throws Exception {
-		Destination destination = message.getOriginalDestination();
+		Destination destination = message.getDestination();
 		
 		if(null == destination) {
-			logger.warn("Could not find destination "+message);
+			logger.warn("Could not find destination for "+message);
 			return null;
 		}
 
@@ -426,17 +430,58 @@ public class Main {
 		}
 	}
 
+	private void copyProperties(ActiveMQMessage sourceMessage, ActiveMQMessage message) throws Exception {
+		for(Enumeration<String> propNameEnum = sourceMessage.getPropertyNames(); propNameEnum.hasMoreElements(); ) {
+			String name = propNameEnum.nextElement();
+			Object value = sourceMessage.getObjectProperty(name);
+			message.setObjectProperty(name, value);
+		}
+	}
+
+	private ActiveMQMessage copyMessage(ActiveMQMessage sourceMessage) throws Exception {
+		ActiveMQMessage message = null;
+		
+		ActiveMQSession session = (ActiveMQSession)( targetSession != null ? targetSession : sourceSession );
+
+		if(sourceMessage.isBodyAssignableTo(byte[].class)) {
+			ActiveMQBytesMessage bytesMessage = (ActiveMQBytesMessage)session.createBytesMessage();
+			bytesMessage.writeBytes(sourceMessage.getBody(byte[].class));
+			message = bytesMessage;
+		} else if(sourceMessage.isBodyAssignableTo(String.class)) {
+			message = (ActiveMQTextMessage)session.createTextMessage(sourceMessage.getBody(String.class));
+		} else if(sourceMessage.isBodyAssignableTo(Map.class)) {
+			Map<String, Object> map = sourceMessage.getBody(Map.class);
+			ActiveMQMapMessage mapMessage = (ActiveMQMapMessage)session.createMapMessage();
+			for(String key : map.keySet()) {
+				mapMessage.setObject(key, map.get(key));
+			}
+			message = mapMessage;
+		} else if(sourceMessage.isBodyAssignableTo(Serializable.class)) {
+			ActiveMQObjectMessage objectMessage = (ActiveMQObjectMessage)session.createObjectMessage();
+			objectMessage.setObject((Serializable)sourceMessage.getBody(Object.class));
+			message = objectMessage;
+		} else {
+			logger.warn("Unknown message type: "+message.toString());
+		}
+
+		copyProperties(sourceMessage, message);
+
+		return message;
+	}
+
 	private ActiveMQMessage fixMessage(ActiveMQMessage sourceMessage) throws Exception {
-		ActiveMQMessage message = (ActiveMQMessage)sourceMessage.copy();
-		message.setDestination(message.getOriginalDestination());
-		String originalScheduledJobId = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
+
+		ActiveMQMessage message = copyMessage(sourceMessage);
+
+		message.setDestination(sourceMessage.getOriginalDestination());
+		String originalScheduledJobId = sourceMessage.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
 		message.setProperty("originalScheduledJobId", originalScheduledJobId);
 		message.removeProperty(ScheduledMessage.AMQ_SCHEDULED_ID);
 
-		String delayString = message.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
+		String delayString = sourceMessage.getStringProperty(ScheduledMessage.AMQ_SCHEDULED_DELAY);
 		if(null != delayString) {
 			long delay = Long.parseLong(delayString);
-			long timestamp = message.getTimestamp();
+			long timestamp = sourceMessage.getTimestamp();
 			long now = new Date().getTime();
 			long delayShift = now - timestamp;
 			long shiftedDelay = delay - delayShift;
