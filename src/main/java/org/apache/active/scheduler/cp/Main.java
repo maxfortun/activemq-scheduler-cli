@@ -306,8 +306,17 @@ public class Main {
 		logger.debug(messageDir.toString());
 		messageDir.mkdir();
 
+		storeMessage(messageDir, message);
 		storeProperties(messageDir, message);
 		storeBody(messageDir, message);
+	}
+
+	private void storeMessage(File messageDir, ActiveMQMessage message) throws Exception {
+		File messageFile = new File(messageDir, "message");
+		FileOutputStream fileOutputStream = new FileOutputStream(messageFile);
+		fileOutputStream.write(message.toString().getBytes());
+		fileOutputStream.close();
+		fileOutputStream = null;
 	}
 
 	private void storeProperties(File messageDir, ActiveMQMessage message) throws Exception {
